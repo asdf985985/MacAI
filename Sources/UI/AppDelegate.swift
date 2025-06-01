@@ -5,6 +5,7 @@ import SwiftUI
 
 public class AppDelegate: NSObject, NSApplicationDelegate {
     private var coordinator: AppCoordinator!
+    private var hotkeyManager: HotkeyManager!
     private var statusItem: NSStatusItem!
     private var preferencesWindow: NSWindow?
     
@@ -15,6 +16,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
     
     private func setupCoordinator() {
         coordinator = AppCoordinator()
+        hotkeyManager = HotkeyManager(floatingWindowController: coordinator.floatingWindowController, configManager: coordinator.configManager)
     }
     
     private func setupStatusBar() {

@@ -22,7 +22,7 @@ struct PreferencesView: View {
             }
             
             Section(header: Text("快捷键设置")) {
-                TextField("快捷键", text: $hotkey)
+                TextField("如：⌘⇧A（支持⌘⌥⌃⇧+字母/数字）", text: $hotkey)
                     .onChange(of: hotkey) { newValue in
                         configManager.hotkey = newValue
                     }

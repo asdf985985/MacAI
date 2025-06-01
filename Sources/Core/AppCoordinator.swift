@@ -70,23 +70,4 @@ public class AIService {
         // TODO: 实现实际的AI处理逻辑
         resultSubject.send("处理结果: \(text)")
     }
-}
-
-// 配置管理器
-public class ConfigManager {
-    private let defaults = UserDefaults.standard
-    private let apiKeyKey = "apiKey"
-    private let hotkeyKey = "hotkey"
-    
-    public var apiKey: String {
-        get { defaults.string(forKey: apiKeyKey) ?? "" }
-        set { defaults.set(newValue, forKey: apiKeyKey) }
-    }
-    
-    public var hotkey: String {
-        get { defaults.string(forKey: hotkeyKey) ?? "⌘⇧A" }
-        set { defaults.set(newValue, forKey: hotkeyKey) }
-    }
-    
-    public init() {}
 } 
