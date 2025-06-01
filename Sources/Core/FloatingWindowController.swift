@@ -4,9 +4,11 @@ public class FloatingWindowController {
     public let window: NSWindow?
     private let userDefaults = UserDefaults.standard
     private let windowFrameKey = "com.utils.sysmonitorx.floatingWindowFrame"
+    private let windowAlphaKey = "com.utils.sysmonitorx.floatingWindowAlpha"
     private var isInMoveMode: Bool = false
     private var isInResizeMode: Bool = false
-
+    private var isVisible: Bool = true
+    
     public init() {
         // 默认竖直长方形尺寸，贯穿屏幕
         let defaultWidth: CGFloat = 700
@@ -27,8 +29,9 @@ public class FloatingWindowController {
         win.level = .floating
         win.ignoresMouseEvents = true
         win.hasShadow = false
-        win.alphaValue = 0.8
-        win.isMovableByWindowBackground = true
+        win.alphaValue = userDefaults.double(forKey: windowAlphaKey) > 0 ? userDefaults.double(forKey: windowAlphaKey) : 0.8
+        win.isMovableByWindowBackground = false
+        win.collectionBehavior = [.canJoinAllSpaces, .stationary]
         
         // 内容视图
         let contentView = NSView(frame: win.contentRect(forFrameRect: win.frame))
@@ -42,11 +45,13 @@ public class FloatingWindowController {
             win.setFrame(frame, display: false)
         }
         self.window = win
+        win.orderFrontRegardless()
     }
 
     public func saveWindowFrame() {
         guard let frame = window?.frame else { return }
         userDefaults.set(NSStringFromRect(frame), forKey: windowFrameKey)
+        userDefaults.set(window?.alphaValue ?? 0.8, forKey: windowAlphaKey)
     }
 
     public func restoreWindowFrame() {
@@ -54,6 +59,9 @@ public class FloatingWindowController {
         if let saved = userDefaults.string(forKey: windowFrameKey) {
             let frame = NSRectFromString(saved)
             win.setFrame(frame, display: false)
+        }
+        if let alpha = userDefaults.object(forKey: windowAlphaKey) as? Double {
+            win.alphaValue = alpha
         }
     }
 
@@ -70,24 +78,40 @@ public class FloatingWindowController {
         window?.orderFrontRegardless()
         window?.display()
         userDefaults.set(NSStringFromRect(defaultRect), forKey: windowFrameKey)
-        print("重置窗口尺寸为：", defaultRect, "内容视图：", window?.contentView?.frame ?? "nil")
+    }
+    
+    public func toggleVisibility() {
+        isVisible.toggle()
+        if isVisible {
+            window?.orderFrontRegardless()
+        } else {
+            window?.orderOut(nil)
+        }
+    }
+    
+    public func setAlpha(_ alpha: CGFloat) {
+        window?.alphaValue = max(0.1, min(1.0, alpha))
+        userDefaults.set(window?.alphaValue, forKey: windowAlphaKey)
     }
     
     public func enterMoveMode() {
         isInMoveMode = true
         isInResizeMode = false
         window?.ignoresMouseEvents = false
+        window?.isMovableByWindowBackground = true
     }
     
     public func exitMoveMode() {
         isInMoveMode = false
         window?.ignoresMouseEvents = true
+        window?.isMovableByWindowBackground = false
     }
     
     public func enterResizeMode() {
         isInResizeMode = true
         isInMoveMode = false
         window?.ignoresMouseEvents = false
+        window?.isMovableByWindowBackground = false
     }
     
     public func exitResizeMode() {
@@ -109,5 +133,9 @@ public class FloatingWindowController {
         frame.size.width += dx
         frame.size.height += dy
         window.setFrame(frame, display: true)
+    }
+    
+    public func updateContent(_ content: String) {
+        // TODO: 实现内容更新逻辑
     }
 } 

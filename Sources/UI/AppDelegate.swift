@@ -4,19 +4,17 @@ import Utils
 import SwiftUI
 
 public class AppDelegate: NSObject, NSApplicationDelegate {
-    private var hotkeyManager: HotkeyManager!
+    private var coordinator: AppCoordinator!
     private var statusItem: NSStatusItem!
     private var preferencesWindow: NSWindow?
-    private var floatingWindowController: FloatingWindowController!
     
     public func applicationDidFinishLaunching(_ notification: Notification) {
-        setupManagers()
+        setupCoordinator()
         setupStatusBar()
     }
     
-    private func setupManagers() {
-        floatingWindowController = FloatingWindowController()
-        hotkeyManager = HotkeyManager(floatingWindowController: floatingWindowController)
+    private func setupCoordinator() {
+        coordinator = AppCoordinator()
     }
     
     private func setupStatusBar() {
@@ -37,7 +35,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
     
     @objc private func showPreferences() {
         if preferencesWindow == nil {
-            let preferencesView = PreferencesView()
+            let preferencesView = PreferencesView(configManager: coordinator.configManager)
             let window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 500, height: 1500),
                 styleMask: [.titled, .closable, .miniaturizable],
@@ -57,11 +55,11 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     @objc private func resetWindowSize() {
-        floatingWindowController.resetWindowFrameToDefault()
+        coordinator.floatingWindowController.resetWindowFrameToDefault()
     }
     
     public func applicationWillTerminate(_ notification: Notification) {
-        floatingWindowController.saveWindowFrame()
+        coordinator.floatingWindowController.saveWindowFrame()
     }
 }
 

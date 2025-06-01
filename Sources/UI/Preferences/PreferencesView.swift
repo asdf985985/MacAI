@@ -1,17 +1,34 @@
 import SwiftUI
+import Core
 
 struct PreferencesView: View {
+    @State private var apiKey: String
+    @State private var hotkey: String
+    private let configManager: ConfigManager
+    
+    init(configManager: ConfigManager) {
+        self.configManager = configManager
+        _apiKey = State(initialValue: configManager.apiKey)
+        _hotkey = State(initialValue: configManager.hotkey)
+    }
+    
     var body: some View {
-        TabView {
-            ShortcutsView()
-                .tabItem {
-                    Label("Shortcuts", systemImage: "keyboard")
-                }
-            GeneralView()
-                .tabItem {
-                    Label("General", systemImage: "gear")
-                }
+        Form {
+            Section(header: Text("API 设置")) {
+                SecureField("API Key", text: $apiKey)
+                    .onChange(of: apiKey) { newValue in
+                        configManager.apiKey = newValue
+                    }
+            }
+            
+            Section(header: Text("快捷键设置")) {
+                TextField("快捷键", text: $hotkey)
+                    .onChange(of: hotkey) { newValue in
+                        configManager.hotkey = newValue
+                    }
+            }
         }
+        .padding()
         .frame(width: 400, height: 200)
     }
 }
