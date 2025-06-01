@@ -26,8 +26,12 @@ let package = Package(
             ]
         ),
         .target(
+            name: "Input",
+            dependencies: []
+        ),
+        .target(
             name: "Core",
-            dependencies: ["Utils"]
+            dependencies: ["Utils", "Input"]
         ),
         .target(
             name: "UI",

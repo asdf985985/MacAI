@@ -3,18 +3,22 @@ import HotKey
 import Core
 import Combine
 import AppKit
+import Input
 
 class HotkeyManager {
     private var toggleWindowHotKey: HotKey?
     private var moveModeHotKey: HotKey?
     private var resizeModeHotKey: HotKey?
+    private var sttToggleHotKey: HotKey?
     private weak var floatingWindowController: FloatingWindowController?
     private var cancellable: AnyCancellable?
     private let configManager: ConfigManager
+    private let sttManager: STTManager
     
-    init(floatingWindowController: FloatingWindowController, configManager: ConfigManager) {
+    init(floatingWindowController: FloatingWindowController, configManager: ConfigManager, sttManager: STTManager) {
         self.floatingWindowController = floatingWindowController
         self.configManager = configManager
+        self.sttManager = sttManager
         registerDefaultHotkeys()
         observeHotkeyChange()
     }
@@ -36,6 +40,11 @@ class HotkeyManager {
         resizeModeHotKey = HotKey(key: .r, modifiers: [.command, .control, .option])
         resizeModeHotKey?.keyDownHandler = { [weak self] in
             self?.floatingWindowController?.enterResizeMode()
+        }
+        // 新增语音识别开关热键
+        sttToggleHotKey = HotKey(key: .s, modifiers: [.command, .control, .option])
+        sttToggleHotKey?.keyDownHandler = { [weak self] in
+            self?.sttManager.toggleListening()
         }
     }
     

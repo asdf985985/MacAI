@@ -16,7 +16,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
     
     private func setupCoordinator() {
         coordinator = AppCoordinator()
-        hotkeyManager = HotkeyManager(floatingWindowController: coordinator.floatingWindowController, configManager: coordinator.configManager)
+        hotkeyManager = HotkeyManager(floatingWindowController: coordinator.floatingWindowController, configManager: coordinator.configManager, sttManager: coordinator.sttManager)
     }
     
     private func setupStatusBar() {

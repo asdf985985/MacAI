@@ -1,11 +1,13 @@
 import Foundation
 import Combine
+import Input
 
 public class AppCoordinator {
     public let inputManager: InputManager
     public let aiService: AIService
     public let configManager: ConfigManager
     public let floatingWindowController: FloatingWindowController
+    public let sttManager: STTManager
     
     private var cancellables = Set<AnyCancellable>()
     
@@ -13,7 +15,8 @@ public class AppCoordinator {
         self.configManager = ConfigManager()
         self.inputManager = InputManager(configManager: configManager)
         self.aiService = AIService(configManager: configManager)
-        self.floatingWindowController = FloatingWindowController()
+        self.sttManager = STTManager()
+        self.floatingWindowController = FloatingWindowController(sttManager: sttManager)
         
         setupDataFlow()
     }
@@ -31,6 +34,13 @@ public class AppCoordinator {
             .sink { [weak self] result in
                 self?.floatingWindowController.updateContent(result)
             }
+            .store(in: &cancellables)
+        
+        // 订阅 STTManager 的语音识别结果，发送给 AI 服务处理
+        sttManager.publisher
+            .sink(receiveCompletion: { _ in }, receiveValue: { [weak self] text in
+                self?.aiService.processText(text)
+            })
             .store(in: &cancellables)
     }
 }
