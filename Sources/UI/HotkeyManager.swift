@@ -14,13 +14,49 @@ class HotkeyManager {
     private var cancellable: AnyCancellable?
     private let configManager: ConfigManager
     private let sttManager: STTManager
+    private let inputManager: InputManager
+    private var ocrCaptureHotKey: HotKey?
+    private var ocrProcessHotKey: HotKey?
+    private var batchToggleHotKey: HotKey?
+    private var batchFinalizeHotKey: HotKey?
+    private var ocrRegionHotKey: HotKey?
     
-    init(floatingWindowController: FloatingWindowController, configManager: ConfigManager, sttManager: STTManager) {
+    init(floatingWindowController: FloatingWindowController, configManager: ConfigManager, sttManager: STTManager, inputManager: InputManager) {
         self.floatingWindowController = floatingWindowController
         self.configManager = configManager
         self.sttManager = sttManager
+        self.inputManager = inputManager
         registerDefaultHotkeys()
         observeHotkeyChange()
+        // 注册OCR相关热键
+        ocrCaptureHotKey = HotKey(key: .h, modifiers: [.command, .option, .shift])
+        ocrCaptureHotKey?.keyDownHandler = {
+            print("热键触发: 全屏截图") // 断点日志
+            OCRManager.shared.captureFullScreen()
+        }
+        // 注册批量模式相关热键
+        batchToggleHotKey = HotKey(key: .k, modifiers: [.command, .option, .shift])
+        batchToggleHotKey?.keyDownHandler = { [weak self] in
+            print("热键触发: 切换批量模式") // 断点日志
+            self?.sttManager.stopListening() // 可选：批量模式下暂停语音识别
+            self?.floatingWindowController?.updateContent("Batch mode toggled")
+            self?.configManager // 保证configManager可用
+            self?.inputManager.toggleBatchMode()
+            print("批量模式状态: \(self?.inputManager.isBatchMode ?? false ? "开启" : "关闭")") // 断点日志
+        }
+        batchFinalizeHotKey = HotKey(key: .l, modifiers: [.command, .option, .shift])
+        batchFinalizeHotKey?.keyDownHandler = { [weak self] in
+            print("热键触发: 批量提交") // 断点日志
+            self?.inputManager.finalizeBatch()
+            print("批量OCR结果已提交") // 断点日志
+        }
+        // 注册区域截图热键
+        ocrRegionHotKey = HotKey(key: .r, modifiers: [.command, .option, .shift])
+        ocrRegionHotKey?.keyDownHandler = {
+            // 简化版：使用全屏截图后裁剪，实际应用中可集成ScreenCaptureKit或自定义UI选择区域
+            let rect = CGRect(x: 100, y: 100, width: 200, height: 200) // 示例区域
+            OCRManager.shared.captureRegion(rect)
+        }
     }
     
     private func observeHotkeyChange() {
@@ -30,20 +66,24 @@ class HotkeyManager {
     }
     
     private func registerDefaultHotkeys() {
+        print("注册默认热键") // 断点日志
         // 注册初始热键
         registerToggleWindowHotkey(hotkeyString: configManager.hotkey)
         // 其它热键保持原样
         moveModeHotKey = HotKey(key: .m, modifiers: [.command, .control, .option])
         moveModeHotKey?.keyDownHandler = { [weak self] in
+            print("热键触发: 移动模式") // 断点日志
             self?.floatingWindowController?.enterMoveMode()
         }
         resizeModeHotKey = HotKey(key: .r, modifiers: [.command, .control, .option])
         resizeModeHotKey?.keyDownHandler = { [weak self] in
+            print("热键触发: 调整大小模式") // 断点日志
             self?.floatingWindowController?.enterResizeMode()
         }
         // 新增语音识别开关热键
         sttToggleHotKey = HotKey(key: .s, modifiers: [.command, .control, .option])
         sttToggleHotKey?.keyDownHandler = { [weak self] in
+            print("热键触发: 语音识别开关") // 断点日志
             self?.sttManager.toggleListening()
         }
     }

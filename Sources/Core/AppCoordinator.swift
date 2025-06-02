@@ -19,6 +19,24 @@ public class AppCoordinator {
         self.floatingWindowController = FloatingWindowController(sttManager: sttManager)
         
         setupDataFlow()
+        
+        // 订阅OCR结果，批量模式下缓冲，否则直接显示
+        OCRManager.shared.ocrResultPublisher
+            .sink { [weak self] text in
+                guard let self = self else { return }
+                if self.inputManager.isBatchMode {
+                    self.inputManager.addOCRToBatch(text)
+                } else {
+                    self.floatingWindowController.updateContent(text)
+                }
+            }
+            .store(in: &cancellables)
+        // 订阅批量模式状态，显示在AI区
+        inputManager.batchStatusPublisher
+            .sink { [weak self] status in
+                self?.floatingWindowController.updateContent(status)
+            }
+            .store(in: &cancellables)
     }
     
     private func setupDataFlow() {
@@ -42,24 +60,6 @@ public class AppCoordinator {
                 self?.aiService.processText(text)
             })
             .store(in: &cancellables)
-    }
-}
-
-// 输入管理器
-public class InputManager {
-    private let configManager: ConfigManager
-    private let textSubject = PassthroughSubject<String, Never>()
-    
-    public var textPublisher: AnyPublisher<String, Never> {
-        textSubject.eraseToAnyPublisher()
-    }
-    
-    public init(configManager: ConfigManager) {
-        self.configManager = configManager
-    }
-    
-    public func processInput(_ text: String) {
-        textSubject.send(text)
     }
 }
 

@@ -10,13 +10,14 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
     private var preferencesWindow: NSWindow?
     
     public func applicationDidFinishLaunching(_ notification: Notification) {
+        print("应用已启动，热键已注册")
         setupCoordinator()
         setupStatusBar()
     }
     
     private func setupCoordinator() {
         coordinator = AppCoordinator()
-        hotkeyManager = HotkeyManager(floatingWindowController: coordinator.floatingWindowController, configManager: coordinator.configManager, sttManager: coordinator.sttManager)
+        hotkeyManager = HotkeyManager(floatingWindowController: coordinator.floatingWindowController, configManager: coordinator.configManager, sttManager: coordinator.sttManager, inputManager: coordinator.inputManager)
     }
     
     private func setupStatusBar() {
