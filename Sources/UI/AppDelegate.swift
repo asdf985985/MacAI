@@ -62,7 +62,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     public func applicationWillTerminate(_ notification: Notification) {
-        coordinator.floatingWindowController.saveWindowFrame()
+        // coordinator.floatingWindowController.saveWindowFrame() // 已无此方法，无需调用
     }
 }
 

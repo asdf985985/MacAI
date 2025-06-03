@@ -1,267 +1,549 @@
 import AppKit
 import Input
 import Combine
+import Foundation
+import SwiftUI
 
-public class FloatingWindowController {
-    public let window: NSWindow?
-    private let userDefaults = UserDefaults.standard
-    private let windowFrameKey = "com.utils.sysmonitorx.floatingWindowFrame"
-    private let windowAlphaKey = "com.utils.sysmonitorx.floatingWindowAlpha"
-    private var isInMoveMode: Bool = false
-    private var isInResizeMode: Bool = false
-    private var isVisible: Bool = true
-    private var cancellables = Set<AnyCancellable>()
-    private var sttManager: STTManager?
-    private var subtitleTextView: NSTextView?
-    private var aiResponseTextView: NSTextView?
+public class FloatingWindowController: NSWindowController {
+    // MARK: - Properties
     
-    public init(sttManager: STTManager? = nil) {
-        self.sttManager = sttManager
-        // 悬浮窗宽度
-        let defaultWidth: CGFloat = 1000
-        let screen = NSScreen.main
-        let screenRect = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let x = screenRect.midX - defaultWidth / 2
-        let y = screenRect.origin.y
-        let defaultRect = NSRect(x: x, y: y, width: defaultWidth, height: screenRect.height)
-
-        let win = NSWindow(
-            contentRect: defaultRect,
-            styleMask: [.borderless],
+    /// 窗口配置
+    private let config: WindowConfig
+    
+    /// 视图模型
+    public let viewModel: FloatingWindowViewModel
+    
+    /// 快捷键订阅
+    private var shortcutSubscription: AnyCancellable?
+    
+    /// 手势模式订阅
+    private var gestureModeSubscription: AnyCancellable?
+    
+    /// 调整大小方向订阅
+    private var resizeDirectionSubscription: AnyCancellable?
+    
+    // MARK: - Initialization
+    
+    public init(config: WindowConfig = .default) {
+        self.config = config
+        self.viewModel = FloatingWindowViewModel()
+        
+        // 创建窗口
+        let window = NSWindow(
+            contentRect: NSRect(
+                origin: config.initialPosition,
+                size: config.initialSize
+            ),
+            styleMask: [
+                .borderless,
+                .fullSizeContentView
+            ],
             backing: .buffered,
             defer: false
         )
-        win.isOpaque = false
-        win.backgroundColor = .clear
-        win.level = .floating
-        win.ignoresMouseEvents = true
-        win.hasShadow = false
-        win.alphaValue = 0.95
-        win.isMovableByWindowBackground = false
-        win.collectionBehavior = [.canJoinAllSpaces, .stationary]
         
-        // 内容视图
-        let contentView = NSView(frame: win.contentRect(forFrameRect: win.frame))
-        contentView.wantsLayer = true
-        contentView.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.15).cgColor
+        // 配置窗口
+        window.title = config.title
+        window.backgroundColor = .clear
+        window.isOpaque = false
+        window.hasShadow = true
+        window.level = config.isAlwaysOnTop ? .floating : .normal
+        window.isMovableByWindowBackground = config.isMovable
+        window.minSize = config.minSize
+        window.maxSize = config.maxSize
         
-        // 字幕组和AI回答区
-        let stackView = NSStackView()
-        stackView.orientation = .vertical
-        stackView.spacing = 10
-        stackView.translatesAutoresizingMaskIntoConstraints = false
-        
-        // 字幕textView
-        let subtitleTextView = NSTextView()
-        subtitleTextView.isEditable = false
-        subtitleTextView.isSelectable = false
-        subtitleTextView.drawsBackground = false
-        subtitleTextView.textColor = .black
-        subtitleTextView.backgroundColor = .white
-        subtitleTextView.font = NSFont.systemFont(ofSize: 22)
-        subtitleTextView.textContainer?.widthTracksTextView = true
-        subtitleTextView.textContainerInset = NSSize(width: 0, height: 8)
-        subtitleTextView.maxSize = NSSize(width: 960, height: CGFloat.greatestFiniteMagnitude)
-        subtitleTextView.textContainer?.containerSize = NSSize(width: 960, height: CGFloat.greatestFiniteMagnitude)
-        subtitleTextView.string = "字幕组"
-        self.subtitleTextView = subtitleTextView
-        let subtitleScroll = NSScrollView()
-        subtitleScroll.hasVerticalScroller = true
-        subtitleScroll.documentView = subtitleTextView
-        subtitleScroll.drawsBackground = false
-        subtitleScroll.backgroundColor = NSColor.gray.withAlphaComponent(0.2)
-        subtitleScroll.translatesAutoresizingMaskIntoConstraints = false
-        subtitleScroll.contentView.postsBoundsChangedNotifications = true
-        subtitleScroll.borderType = .noBorder
-        subtitleScroll.autohidesScrollers = true
-        
-        // AI textView
-        let aiResponseTextView = NSTextView()
-        aiResponseTextView.isEditable = false
-        aiResponseTextView.isSelectable = false
-        aiResponseTextView.drawsBackground = false
-        aiResponseTextView.textColor = .black
-        aiResponseTextView.backgroundColor = .white
-        aiResponseTextView.font = NSFont.systemFont(ofSize: 22)
-        aiResponseTextView.textContainer?.widthTracksTextView = true
-        aiResponseTextView.textContainerInset = NSSize(width: 0, height: 8)
-        aiResponseTextView.maxSize = NSSize(width: 960, height: CGFloat.greatestFiniteMagnitude)
-        aiResponseTextView.textContainer?.containerSize = NSSize(width: 960, height: CGFloat.greatestFiniteMagnitude)
-        aiResponseTextView.string = "AI 回答区"
-        self.aiResponseTextView = aiResponseTextView
-        let aiScroll = NSScrollView()
-        aiScroll.hasVerticalScroller = true
-        aiScroll.documentView = aiResponseTextView
-        aiScroll.drawsBackground = false
-        aiScroll.backgroundColor = NSColor.gray.withAlphaComponent(0.2)
-        aiScroll.translatesAutoresizingMaskIntoConstraints = false
-        aiScroll.contentView.postsBoundsChangedNotifications = true
-        aiScroll.borderType = .noBorder
-        aiScroll.autohidesScrollers = true
-        
-        stackView.addArrangedSubview(subtitleScroll)
-        stackView.addArrangedSubview(aiScroll)
-        contentView.addSubview(stackView)
-        NSLayoutConstraint.activate([
-            stackView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 10),
-            stackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 10),
-            stackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -10),
-            stackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -10),
-            stackView.widthAnchor.constraint(lessThanOrEqualToConstant: 960),
-            subtitleScroll.heightAnchor.constraint(equalToConstant: 120),
-            aiScroll.heightAnchor.constraint(equalToConstant: 120)
-        ])
-        win.contentView = contentView
-        
-        // 恢复 frame
-        if let saved = userDefaults.string(forKey: windowFrameKey) {
-            let frame = NSRectFromString(saved)
-            win.setFrame(frame, display: false)
-        }
-        self.window = win
-        win.orderFrontRegardless()
-        subscribeToSTT()
-        
-        subtitleTextView.frame = subtitleScroll.contentView.bounds
-        aiResponseTextView.frame = aiScroll.contentView.bounds
-    }
-
-    private func subscribeToSTT() {
-        sttManager?.publisher.sink(receiveCompletion: { _ in }, receiveValue: { [weak self] (text: String) in
-            print("[调试] 收到语音识别：", text)
-            guard let textView = self?.subtitleTextView else { return }
-            let shadow = NSShadow()
-            shadow.shadowColor = NSColor.black.withAlphaComponent(0.9)
-            shadow.shadowBlurRadius = 3
-            shadow.shadowOffset = NSMakeSize(1, -1)
-            let attrString = NSAttributedString(
-                string: text,
-                attributes: [
-                    .foregroundColor: NSColor(calibratedWhite: 1.0, alpha: 0.65),
-                    .font: NSFont.systemFont(ofSize: 22, weight: .semibold),
-                    .shadow: shadow
-                ]
-            )
-            textView.textStorage?.setAttributedString(attrString)
-            textView.layoutManager?.ensureLayout(for: textView.textContainer!)
-            textView.display()
-            if let scrollView = textView.enclosingScrollView {
-                let range = NSRange(location: textView.string.count, length: 0)
-                textView.scrollRangeToVisible(range)
-                scrollView.reflectScrolledClipView(scrollView.contentView)
-            }
-        }).store(in: &cancellables)
-    }
-
-    public func saveWindowFrame() {
-        guard let frame = window?.frame else { return }
-        userDefaults.set(NSStringFromRect(frame), forKey: windowFrameKey)
-        userDefaults.set(window?.alphaValue ?? 0.8, forKey: windowAlphaKey)
-    }
-
-    public func restoreWindowFrame() {
-        guard let win = window else { return }
-        if let saved = userDefaults.string(forKey: windowFrameKey) {
-            let frame = NSRectFromString(saved)
-            win.setFrame(frame, display: false)
-        }
-        if let alpha = userDefaults.object(forKey: windowAlphaKey) as? Double {
-            win.alphaValue = alpha
-        }
-    }
-
-    public func resetWindowFrameToDefault() {
-        let defaultWidth: CGFloat = 1000
-        let screen = NSScreen.main
-        let screenRect = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let x = screenRect.midX - defaultWidth / 2
-        let y = screenRect.origin.y
-        let defaultRect = NSRect(x: x, y: y, width: defaultWidth, height: screenRect.height)
-        userDefaults.removeObject(forKey: windowFrameKey)
-        window?.setFrame(defaultRect, display: true)
-        window?.contentView?.setFrameSize(defaultRect.size)
-        window?.orderFrontRegardless()
-        window?.display()
-        userDefaults.set(NSStringFromRect(defaultRect), forKey: windowFrameKey)
-    }
-    
-    public func toggleVisibility() {
-        isVisible.toggle()
-        if isVisible {
-            window?.orderFrontRegardless()
-        } else {
-            window?.orderOut(nil)
-        }
-    }
-    
-    public func setAlpha(_ alpha: CGFloat) {
-        window?.alphaValue = max(0.1, min(1.0, alpha))
-        userDefaults.set(window?.alphaValue, forKey: windowAlphaKey)
-    }
-    
-    public func enterMoveMode() {
-        isInMoveMode = true
-        isInResizeMode = false
-        window?.ignoresMouseEvents = false
-        window?.isMovableByWindowBackground = true
-    }
-    
-    public func exitMoveMode() {
-        isInMoveMode = false
-        window?.ignoresMouseEvents = true
-        window?.isMovableByWindowBackground = false
-    }
-    
-    public func enterResizeMode() {
-        isInResizeMode = true
-        isInMoveMode = false
-        window?.ignoresMouseEvents = false
-        window?.isMovableByWindowBackground = false
-    }
-    
-    public func exitResizeMode() {
-        isInResizeMode = false
-        window?.ignoresMouseEvents = true
-    }
-    
-    public func moveWindow(dx: CGFloat, dy: CGFloat) {
-        guard isInMoveMode, let window = window else { return }
-        var frame = window.frame
-        frame.origin.x += dx
-        frame.origin.y += dy
-        window.setFrame(frame, display: true)
-    }
-    
-    public func resizeWindow(dx: CGFloat, dy: CGFloat) {
-        guard isInResizeMode, let window = window else { return }
-        var frame = window.frame
-        frame.size.width += dx
-        frame.size.height += dy
-        window.setFrame(frame, display: true)
-    }
-    
-    public func updateContent(_ content: String) {
-        print("[调试] 更新AI区：", content)
-        guard let textView = aiResponseTextView else { return }
-        let shadow = NSShadow()
-        shadow.shadowColor = NSColor.black.withAlphaComponent(0.9)
-        shadow.shadowBlurRadius = 3
-        shadow.shadowOffset = NSMakeSize(1, -1)
-        let attrString = NSAttributedString(
-            string: content,
-            attributes: [
-                .foregroundColor: NSColor(calibratedWhite: 1.0, alpha: 0.65),
-                .font: NSFont.systemFont(ofSize: 22, weight: .semibold),
-                .shadow: shadow
-            ]
+        // 设置内容视图
+        window.contentView = NSHostingView(
+            rootView: FloatingWindowView(viewModel: viewModel)
         )
-        textView.textStorage?.setAttributedString(attrString)
-        textView.layoutManager?.ensureLayout(for: textView.textContainer!)
-        textView.display()
-        if let scrollView = textView.enclosingScrollView {
-            let range = NSRange(location: textView.string.count, length: 0)
-            textView.scrollRangeToVisible(range)
-            scrollView.reflectScrolledClipView(scrollView.contentView)
+        
+        super.init(window: window)
+        
+        // 设置快捷键处理
+        setupKeyboardShortcuts()
+        
+        // 设置手势处理
+        setupGestureHandling()
+    }
+    
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
+    // MARK: - Window Management
+    
+    /// 显示窗口
+    public func show() {
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+    
+    /// 隐藏窗口
+    public func hide() {
+        window?.orderOut(nil)
+    }
+    
+    /// 切换窗口显示状态
+    public func toggle() {
+        if let window = window {
+            if window.isVisible {
+                hide()
+            } else {
+                show()
+            }
         }
     }
+    
+    /// 移动窗口
+    public func move(to point: CGPoint) {
+        window?.setFrameOrigin(point)
+    }
+    
+    /// 调整窗口大小
+    public func resize(to size: CGSize) {
+        guard let window = window else { return }
+        let frame = window.frame
+        window.setFrame(
+            NSRect(
+                x: frame.origin.x,
+                y: frame.origin.y,
+                width: size.width,
+                height: size.height
+            ),
+            display: true
+        )
+    }
+    
+    /// 调整窗口透明度
+    public func setOpacity(_ opacity: CGFloat) {
+        window?.alphaValue = opacity
+    }
+    
+    // MARK: - Content Management
+    
+    /// 添加字幕
+    public func addSubtitle(_ text: String, translation: String? = nil) {
+        let subtitle = Subtitle(text: text, translation: translation)
+        viewModel.subtitleViewModel.addSubtitle(subtitle)
+    }
+    
+    /// 添加 OCR 文本
+    public func addOCRText(_ text: String, confidence: Double = 1.0) {
+        viewModel.ocrTextViewModel.addText(text, confidence: confidence)
+    }
+    
+    /// 添加 AI 建议
+    public func addAISuggestion(_ content: String, type: AISuggestionViewModel.SuggestionType) {
+        viewModel.aiSuggestionViewModel.addSuggestion(content, type: type)
+    }
+    
+    /// 显示状态消息
+    public func showStatus(_ message: String, type: StatusViewModel.MessageType = .info) {
+        viewModel.statusViewModel.show(message, type: type)
+    }
+    
+    // MARK: - Window State Management
+    
+    /// 保存窗口状态
+    public func saveWindowState() {
+        guard let window = window else { return }
+        let frame = window.frame
+        let alpha = window.alphaValue
+        
+        UserDefaults.standard.set([
+            "x": frame.origin.x,
+            "y": frame.origin.y,
+            "width": frame.width,
+            "height": frame.height,
+            "alpha": alpha
+        ], forKey: WindowConfig.frameSaveKey)
+    }
+    
+    /// 恢复窗口状态
+    public func restoreWindowState() {
+        guard let window = window else { return }
+        let savedState = UserDefaults.standard.dictionary(forKey: "windowState") as? [String: Any] ?? [:]
+        
+        let frame = NSRect(
+            x: savedState["x"] as? CGFloat ?? config.initialPosition.x,
+            y: savedState["y"] as? CGFloat ?? config.initialPosition.y,
+            width: savedState["width"] as? CGFloat ?? config.initialSize.width,
+            height: savedState["height"] as? CGFloat ?? config.initialSize.height
+        )
+        
+        window.setFrame(frame, display: true)
+        window.alphaValue = savedState["alpha"] as? CGFloat ?? WindowConfig.defaultOpacity
+    }
+    
+    /// 重置窗口到默认状态
+    public func resetWindowFrameToDefault() {
+        guard let window = window else { return }
+        let frame = NSRect(
+            x: config.initialPosition.x,
+            y: config.initialPosition.y,
+            width: config.initialSize.width,
+            height: config.initialSize.height
+        )
+        window.setFrame(frame, display: true)
+        window.alphaValue = WindowConfig.defaultOpacity
+    }
+    
+    // MARK: - Private Methods
+    
+    private func setupKeyboardShortcuts() {
+        shortcutSubscription = KeyboardShortcutManager.shared.shortcutPublisher
+            .sink { [weak self] shortcut in
+                self?.handleShortcut(shortcut)
+            }
+    }
+    
+    private func setupGestureHandling() {
+        // 订阅手势模式变化
+        gestureModeSubscription = WindowGestureManager.shared.modeSubject
+            .sink { [weak self] mode in
+                self?.handleGestureMode(mode)
+            }
+        
+        // 订阅调整大小方向变化
+        resizeDirectionSubscription = WindowGestureManager.shared.resizeDirectionSubject
+            .sink { [weak self] direction in
+                self?.handleResizeDirection(direction)
+            }
+    }
+    
+    private func handleShortcut(_ shortcut: KeyboardShortcut) {
+        switch shortcut.identifier {
+        case "toggle_window":
+            toggle()
+            
+        case "move_window_up":
+            moveWindow(direction: .up)
+        case "move_window_down":
+            moveWindow(direction: .down)
+        case "move_window_left":
+            moveWindow(direction: .left)
+        case "move_window_right":
+            moveWindow(direction: .right)
+            
+        case "clear_content":
+            clearContent()
+            
+        case "scroll_up":
+            scrollUp()
+        case "scroll_down":
+            scrollDown()
+        case "page_up":
+            pageUp()
+        case "page_down":
+            pageDown()
+        case "scroll_to_top":
+            scrollToTop()
+        case "scroll_to_bottom":
+            scrollToBottom()
+            
+        case "resize_window":
+            toggleResizeMode()
+            
+        case "increase_opacity":
+            increaseOpacity()
+        case "decrease_opacity":
+            decreaseOpacity()
+            
+        case "activate_move_mode":
+            WindowGestureManager.shared.activateMoveMode()
+        case "activate_resize_mode":
+            WindowGestureManager.shared.activateResizeMode()
+            
+        case "resize_top":
+            WindowGestureManager.shared.setResizeDirection(.top)
+        case "resize_bottom":
+            WindowGestureManager.shared.setResizeDirection(.bottom)
+        case "resize_left":
+            WindowGestureManager.shared.setResizeDirection(.left)
+        case "resize_right":
+            WindowGestureManager.shared.setResizeDirection(.right)
+        case "resize_top_left":
+            WindowGestureManager.shared.setResizeDirection(.topLeft)
+        case "resize_top_right":
+            WindowGestureManager.shared.setResizeDirection(.topRight)
+        case "resize_bottom_left":
+            WindowGestureManager.shared.setResizeDirection(.bottomLeft)
+        case "resize_bottom_right":
+            WindowGestureManager.shared.setResizeDirection(.bottomRight)
+            
+        case "next_suggestion":
+            viewModel.aiSuggestionViewModel.nextSuggestion()
+        case "previous_suggestion":
+            viewModel.aiSuggestionViewModel.previousSuggestion()
+        case "copy_suggestion":
+            viewModel.aiSuggestionViewModel.copyCurrentSuggestion()
+        case "dismiss_suggestion":
+            viewModel.aiSuggestionViewModel.dismissSuggestion()
+            
+        default:
+            break
+        }
+    }
+    
+    private func handleGestureMode(_ mode: WindowGestureManager.GestureMode) {
+        switch mode {
+        case .none:
+            window?.ignoresMouseEvents = true
+        case .move:
+            window?.ignoresMouseEvents = false
+            window?.isMovableByWindowBackground = true
+        case .resize:
+            window?.ignoresMouseEvents = false
+            window?.isMovableByWindowBackground = false
+        }
+    }
+    
+    private func handleResizeDirection(_ direction: WindowGestureManager.ResizeDirection) {
+        // 根据方向显示调整大小的视觉提示
+        switch direction {
+        case .none:
+            NSCursor.arrow.set()
+        case .top, .bottom:
+            NSCursor.resizeUpDown.set()
+        case .left, .right:
+            NSCursor.resizeLeftRight.set()
+        case .topLeft, .bottomRight:
+            NSCursor.crosshair.set()
+        case .topRight, .bottomLeft:
+            NSCursor.crosshair.set()
+        }
+    }
+    
+    private func moveWindow(direction: Direction) {
+        guard let window = window else { return }
+        let currentFrame = window.frame
+        let step = WindowConfig.moveStep
+        
+        var newOrigin = currentFrame.origin
+        switch direction {
+        case .up:
+            newOrigin.y += step
+        case .down:
+            newOrigin.y -= step
+        case .left:
+            newOrigin.x -= step
+        case .right:
+            newOrigin.x += step
+        }
+        
+        window.setFrameOrigin(newOrigin)
+    }
+    
+    private func scrollUp() {
+        viewModel.subtitleViewModel.scrollUp()
+        viewModel.ocrTextViewModel.scrollUp()
+        viewModel.aiSuggestionViewModel.scrollUp()
+    }
+    
+    private func scrollDown() {
+        viewModel.subtitleViewModel.scrollDown()
+        viewModel.ocrTextViewModel.scrollDown()
+        viewModel.aiSuggestionViewModel.scrollDown()
+    }
+    
+    private func pageUp() {
+        viewModel.subtitleViewModel.pageUp()
+        viewModel.ocrTextViewModel.pageUp()
+        viewModel.aiSuggestionViewModel.pageUp()
+    }
+    
+    private func pageDown() {
+        viewModel.subtitleViewModel.pageDown()
+        viewModel.ocrTextViewModel.pageDown()
+        viewModel.aiSuggestionViewModel.pageDown()
+    }
+    
+    private func scrollToTop() {
+        viewModel.subtitleViewModel.scrollToStart()
+        viewModel.ocrTextViewModel.scrollToStart()
+        viewModel.aiSuggestionViewModel.scrollToStart()
+    }
+    
+    private func scrollToBottom() {
+        viewModel.subtitleViewModel.scrollToEnd()
+        viewModel.ocrTextViewModel.scrollToEnd()
+        viewModel.aiSuggestionViewModel.scrollToEnd()
+    }
+    
+    private func toggleResizeMode() {
+        if WindowGestureManager.shared.isResizeModeActive {
+            WindowGestureManager.shared.deactivateResizeMode()
+        } else {
+            WindowGestureManager.shared.activateResizeMode()
+        }
+    }
+    
+    private func increaseOpacity() {
+        adjustOpacity(by: 0.1)
+    }
+    
+    private func decreaseOpacity() {
+        adjustOpacity(by: -0.1)
+    }
+    
+    private func adjustOpacity(by delta: CGFloat) {
+        guard let window = window else { return }
+        let newOpacity = max(0.1, min(1.0, window.alphaValue + delta))
+        setOpacity(newOpacity)
+    }
+    
+    private func clearContent() {
+        viewModel.subtitleViewModel.clearContent()
+        viewModel.ocrTextViewModel.clearContent()
+        viewModel.aiSuggestionViewModel.clearSuggestions()
+    }
+}
+
+// MARK: - Direction
+
+private enum Direction {
+    case up
+    case down
+    case left
+    case right
+}
+
+// MARK: - FloatingWindowView
+
+private struct FloatingWindowView: View {
+    // MARK: - Properties
+    
+    @ObservedObject var viewModel: FloatingWindowViewModel
+    
+    // MARK: - Body
+    
+    var body: some View {
+        ZStack {
+            // 背景
+            Color.clear
+            
+            // 内容视图
+            VStack(spacing: 0) {
+                // 字幕视图
+                SubtitleView(viewModel: viewModel.subtitleViewModel)
+                    .frame(height: 150)
+                
+                // OCR 文本视图
+                OCRTextView(viewModel: viewModel.ocrTextViewModel)
+                    .frame(height: 200)
+                
+                // AI 建议视图
+                AISuggestionView(viewModel: viewModel.aiSuggestionViewModel)
+                    .frame(height: 100)
+            }
+            
+            // 状态消息视图
+            VStack {
+                Spacer()
+                StatusView(viewModel: viewModel.statusViewModel)
+                    .padding(.bottom, 16)
+            }
+        }
+    }
+}
+
+// MARK: - FloatingWindowViewModel
+
+public class FloatingWindowViewModel: ObservableObject {
+    // MARK: - Properties
+    
+    /// 字幕视图模型
+    public let subtitleViewModel = SubtitleViewModel()
+    
+    /// OCR 文本视图模型
+    public let ocrTextViewModel = OCRTextViewModel()
+    
+    /// AI 建议视图模型
+    public let aiSuggestionViewModel = AISuggestionViewModel()
+    
+    /// 状态消息视图模型
+    public let statusViewModel = StatusViewModel()
+    
+    // MARK: - Content Management
+    
+    /// 添加字幕
+    public func addSubtitle(_ text: String, translation: String? = nil) {
+        let subtitle = Subtitle(text: text, translation: translation)
+        subtitleViewModel.addSubtitle(subtitle)
+    }
+    
+    /// 添加 OCR 文本
+    public func addOCRText(_ text: String, confidence: Double = 1.0) {
+        ocrTextViewModel.addText(text, confidence: confidence)
+    }
+    
+    /// 添加 AI 建议
+    public func addAISuggestion(_ content: String, type: AISuggestionViewModel.SuggestionType) {
+        aiSuggestionViewModel.addSuggestion(content, type: type)
+    }
+    
+    /// 显示状态消息
+    public func showStatus(_ message: String, type: StatusViewModel.MessageType = .info) {
+        statusViewModel.show(message, type: type)
+    }
+}
+
+extension FloatingWindowController: NSWindowDelegate {
+    public func windowDidMove(_ notification: Notification) {
+        saveWindowState()
+    }
+    
+    public func windowDidResize(_ notification: Notification) {
+        saveWindowState()
+    }
+    
+    public func windowWillClose(_ notification: Notification) {
+        saveWindowState()
+    }
+    
+    public func windowDidChangeScreen(_ notification: Notification) {
+        // 当窗口移动到不同屏幕时，确保窗口位置和大小在屏幕范围内
+        guard let window = window,
+              let screen = window.screen else { return }
+        
+        let visibleFrame = screen.visibleFrame
+        var frame = window.frame
+        
+        // 确保窗口在屏幕范围内
+        if frame.maxX > visibleFrame.maxX {
+            frame.origin.x = visibleFrame.maxX - frame.width
+        }
+        if frame.minX < visibleFrame.minX {
+            frame.origin.x = visibleFrame.minX
+        }
+        if frame.maxY > visibleFrame.maxY {
+            frame.origin.y = visibleFrame.maxY - frame.height
+        }
+        if frame.minY < visibleFrame.minY {
+            frame.origin.y = visibleFrame.minY
+        }
+        
+        // 如果窗口大小超过屏幕范围，调整大小
+        if frame.width > visibleFrame.width {
+            frame.size.width = visibleFrame.width
+        }
+        if frame.height > visibleFrame.height {
+            frame.size.height = visibleFrame.height
+        }
+        
+        window.setFrame(frame, display: true)
+        saveWindowState()
+    }
+}
+
+private enum ResizeDirection {
+    case none
+    case top
+    case bottom
+    case left
+    case right
+    case topLeft
+    case topRight
+    case bottomLeft
+    case bottomRight
 } 

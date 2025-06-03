@@ -28,4 +28,30 @@ public class ConfigManager {
         let initialHotkey = defaults.string(forKey: hotkeyKey) ?? "⌘⇧A"
         hotkeySubject = CurrentValueSubject<String, Never>(initialHotkey)
     }
+}
+
+extension ConfigManager {
+    // MARK: - Window State
+    
+    public func saveWindowState(_ state: WindowState) {
+        do {
+            let data = try JSONEncoder().encode(state)
+            UserDefaults.standard.set(data, forKey: "windowState")
+        } catch {
+            print("Failed to save window state: \(error)")
+        }
+    }
+    
+    public func loadWindowState() -> WindowState? {
+        guard let data = UserDefaults.standard.data(forKey: "windowState") else {
+            return nil
+        }
+        
+        do {
+            return try JSONDecoder().decode(WindowState.self, from: data)
+        } catch {
+            print("Failed to load window state: \(error)")
+            return nil
+        }
+    }
 } 

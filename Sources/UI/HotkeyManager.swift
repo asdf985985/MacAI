@@ -39,7 +39,6 @@ class HotkeyManager {
         batchToggleHotKey?.keyDownHandler = { [weak self] in
             print("热键触发: 切换批量模式") // 断点日志
             self?.sttManager.stopListening() // 可选：批量模式下暂停语音识别
-            self?.floatingWindowController?.updateContent("Batch mode toggled")
             self?.configManager // 保证configManager可用
             self?.inputManager.toggleBatchMode()
             print("批量模式状态: \(self?.inputManager.isBatchMode ?? false ? "开启" : "关闭")") // 断点日志
@@ -73,12 +72,10 @@ class HotkeyManager {
         moveModeHotKey = HotKey(key: .m, modifiers: [.command, .control, .option])
         moveModeHotKey?.keyDownHandler = { [weak self] in
             print("热键触发: 移动模式") // 断点日志
-            self?.floatingWindowController?.enterMoveMode()
         }
         resizeModeHotKey = HotKey(key: .r, modifiers: [.command, .control, .option])
         resizeModeHotKey?.keyDownHandler = { [weak self] in
             print("热键触发: 调整大小模式") // 断点日志
-            self?.floatingWindowController?.enterResizeMode()
         }
         // 新增语音识别开关热键
         sttToggleHotKey = HotKey(key: .s, modifiers: [.command, .control, .option])
