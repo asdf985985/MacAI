@@ -13,7 +13,8 @@ let package = Package(
         )
     ],
     dependencies: [
-        .package(url: "https://github.com/soffes/HotKey.git", from: "0.1.4")
+        .package(url: "https://github.com/soffes/HotKey.git", from: "0.1.4"),
+        .package(url: "https://github.com/apple/swift-argument-parser", from: "1.2.0"),
     ],
     targets: [
         .executableTarget(
@@ -22,7 +23,8 @@ let package = Package(
                 "Core",
                 "UI",
                 "Utils",
-                "HotKey"
+                "HotKey",
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ]
         ),
         .target(
@@ -31,7 +33,10 @@ let package = Package(
         ),
         .target(
             name: "Core",
-            dependencies: ["Utils", "Input"]
+            dependencies: ["Utils", "Input"],
+            resources: [
+                .process("Resources")
+            ]
         ),
         .target(
             name: "UI",

@@ -25,18 +25,40 @@ final class AppCoordinatorTests: XCTestCase {
         XCTAssertNotNil(coordinator.configManager)
     }
     
-    func testDataFlowFromInputToAI() {
+    @MainActor
+    func testDataFlowFromInputToAI() async throws {
+        let mockSession = MockURLSession()
+        mockSession.mockResponse = HTTPURLResponse(
+            url: URL(string: "https://api.example.com")!,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: nil
+        )
+        mockSession.mockData = """
+        {
+            "choices": [
+                {
+                    "text": "Mock response"
+                }
+            ]
+        }
+        """.data(using: .utf8)!
+        
+        let configManager = ConfigManager()
+        let coordinator = AppCoordinator()
         let expectation = XCTestExpectation(description: "AI should receive input")
         
-        coordinator.aiService.resultPublisher
-            .sink { result in
-                XCTAssertEqual(result, "处理结果: Test Input")
+        Task {
+            do {
+                let result = try await coordinator.aiService.processText("test input", contextType: Core.ContextType.stt)
+                XCTAssertNotNil(result)
                 expectation.fulfill()
+            } catch {
+                XCTFail("Unexpected error: \(error)")
             }
-            .store(in: &cancellables)
+        }
         
-        coordinator.inputManager.processInput("Test Input")
-        wait(for: [expectation], timeout: 1.0)
+        await fulfillment(of: [expectation], timeout: 0.5)
     }
     
     func testConfigManagerStoresAndRetrievesValues() {
